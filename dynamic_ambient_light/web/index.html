@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamiczne oświetlenie nastrojowe</title>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            /*background: linear-gradient(90deg, #1c2541 0%, #0a1128  100%);*/
+            background-image: url('tlo_aplikacji.webp');
+            background-repeat: no-repeat;
+            background-size: auto;
+            background-color: #0a1128;
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: #f8f3d4;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+
+        /* Główny kontener */
+        .arrange {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            width: 100%;
+            gap: 20px;
+        }
+
+        .side-panel {
+            display: flex;
+            flex: 1;
+            max-width: 400px;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        button {
+            background-color: #1c2541;
+            color: #f8f3d4;
+            border: 2px solid #00580f;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: 700;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.5s ease;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        button:not(:disabled):hover {
+            background-color: #1c2541;
+            color: #f8f3d4;
+            transform: translateY(-2px);
+        }
+
+        button:not(:disabled):active {
+            transform: scale(0.97);
+        }
+
+        button:disabled {
+            background-color: transparent;
+            border: 2px solid #001c05;
+            color: #b1ae9a;
+            cursor: default;
+        }
+
+        button.active {
+            background-color: #1c2541;;
+            color: #f8f3d4;
+            border-color: #d12929;
+        }
+
+        button.active:hover {
+            background-color: #1c2541;
+            color: #f8f3d4;
+            border: 2px solid #d12929;
+        }
+        
+        .stream-button-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        .bottom-buttons-containter {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+
+        .picker-wrapper {
+            display: flex; 
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            background-color: #0a1128;
+            padding: 0 20px;
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            visibility: hidden;
+            border-radius: 12px;
+            box-shadow: 0px 0px 15px #040711;
+            border: 0px solid #00580f; 
+            transition: opacity 0.5s ease, visibility 0.5s ease, max-height 0.5s ease, padding 0.5s ease, border 0.5s ease;
+        }
+
+        .picker-wrapper.show {
+            max-height: 400px;
+            padding: 20px;
+            opacity: 1;
+            visibility: visible;
+        }
+        #colourCanvas {
+            border-radius: 8px;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .picker-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            justify-content: space-between;
+        }
+
+        #colourPreview {
+            width: 45px;
+            height: 45px;
+            border-radius: 12px;
+            border: 3px solid #ffffff;
+            background-color: #ffd200;
+        }
+
+        #rgbValues {
+            font-size: 16px;
+            letter-spacing: 1px;
+        }
+
+        .rgb-inputs {
+            display: flex;
+            gap: 6px;
+        }
+
+        .rgb-field {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 11px;
+            color: #a5a5a5;
+        }
+
+        .rgb-field input {
+        width: 46px;
+        padding: 6px 2px;
+        margin-top: 3px;
+        background-color: #0a1128;
+        color: #a5a5a5;
+        border: 1px solid #00580f;
+        border-radius: 6px;
+        text-align: center;
+        font-size: 14px;
+        }
+
+        .rgb-field input:focus {
+        outline: none;
+        border-color: #d12929;
+}
+
+        #helpText {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+            line-height: 1.4;
+        }
+        
+        #helpText b {
+            display: block;
+            margin-bottom: 15px;
+        }
+
+        #helpSteps {
+            margin: 10px 10px;
+        }
+
+        #markerMessage {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+            margin-bottom: 15px;
+        }
+
+        .video-container {
+            position: relative;
+            display: inline-block;
+
+            /* Blokada zaznaczania na komputerach i urządzeniach dotykowych */
+            user-select: none;
+            -webkit-user-select: none;
+
+            box-shadow: 0px 0px 15px #040711;
+            width: 640px;
+            max-width: 100%;
+            aspect-ratio: 4/3;
+            overflow: hidden;
+        }
+
+        #cameraStream {
+            display: none;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            box-shadow: 0 4px 15px #0a1128;
+        }
+
+        #overlaySvg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Kliknięcia przechodzą "przez SVG" do markerów */
+            display: none;
+            z-index: 5; /* Kolejność układania się: wyżej niż wideo, niżej niż markery */
+        }
+
+        /*Teskt zastępczy dla streamu*/
+        #streamPlaceholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #a5a5a5;
+            font-size: 18px;
+            font-weight: 500;
+            
+        }
+        
+        #lightBtn:not(:disabled):hover
+        {
+            box-shadow: 0px 1px 20px #ffffff;
+        }
+
+        #lightBtn:not(:disabled):active
+        {
+            box-shadow: 0px 1px 20px #ffffff;
+        }
+
+        .marker {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background-color: transparent;
+            color: #2e8820;
+            border: 2px solid #ffffff;
+            outline: 2px solid #000000;
+            cursor: move;
+
+            /* Środek pounktu to współrzędne procentowe */
+            transform: translate(-50%, -50%);
+            box-shadow: 0px 0px 8px rgba(255, 255, 255, 0.6);
+
+            touch-action: none;
+
+            /*Domyślne ukrycie*/
+            display: none;
+            
+            /* Markery na wierzchu */
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Dynamiczne oświetlenie nastrojowe</h1>
+    </header>
+    <div class="stream-button-container">
+        <button type="button" id="streamBtn">Włącz podgląd na żywo</button>
+        <div id="markerMessage">Zaznacz widoczny na podglądzie obszar ekranu za pomocą czterech znaczników.</div>
+    </div>
+    <div class="arrange">
+        <div class="side-panel">
+            <button type="button" id="colourPickerBtn">Wybór koloru</button>
+            <div id="pickerWrapper" class="picker-wrapper">
+                <canvas id="colourCanvas" width="220" height="110"></canvas>
+                <div class="picker-controls">
+                    <div id="colourPreview"></div>
+                    <div class="rgb-inputs">
+                        <label class="rgb-field">
+                            R
+                            <input type="number" id="inputR" min="0" max="255" value="255">
+                        </label>
+                        <label class="rgb-field">
+                            G
+                            <input type="number" id="inputG" min="0" max="255" value="210">
+                        </label>
+                        <label class="rgb-field">
+                            B
+                            <input type="number" id="inputB" min="0" max="255" value="0">
+                        </label>
+                    </div>
+                </div>
+                <button type="button" id="colourSendBtn">Zapisz kolor</button>
+            </div>
+        </div>
+        <div class="video-container" id="videoContainer">
+            <div id="streamPlaceholder">Podgląd jest wyłączony</div>
+
+            <img id="cameraStream" src="" alt="Podgląd z kamery na żywo">
+
+            <svg id="overlaySvg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                    <mask id="quadMask">
+                        <!--Tło-->
+                        <rect x="0" y="0" width="100" height="100" fill="white" />
+                        <!--Wnętrze-->
+                        <polygon id="maskPolygon" points="20,80 80,80 80,20 20,20" fill="black"/>
+                    </mask>
+                </defs>
+                <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.55)" mask="url(#quadMask)"/>
+                <polygon id="borderPolygon" points="20,80 80,80 80,20 20,20" fill="none" stroke="#000000" stroke-dasharray="1 1" stroke-width="0.5"/>
+            </svg>
+
+            <div class="marker" id="p1" style="left: 20%; top: 80%;"></div>
+            <div class="marker" id="p2" style="left: 80%; top: 80%;"></div>
+            <div class="marker" id="p3" style="left: 80%; top: 20%;"></div>
+            <div class="marker" id="p4" style="left: 20%; top: 20%;"></div>
+        </div>
+        <div class="side-panel">
+            <button type="button" id="helpBtn">Pomoc</button>
+            <div id="helpText">
+                <b>Instrukcja obsługi aplikacji</b>
+                W celu poprawnego skonfigurowania systemu oświetlenia nastrojowego należy:<br>
+                <div id="helpSteps">
+                    1. Uruchomić podgląd za pomocą przycisku.<br>
+                    2. Przy użyciu znaczników, zaznaczyć obszar ekranu.<br>
+                    3. Zapisać konfigurację używając przycisku.<br>
+                    4. Uruchomić podświetlenie.<br>
+                </div>
+                W przypadku chęci skorzystania z innych trybów świecenia, należy użyć menu po lewej stronie okna z podglądem.
+            </div>
+        </div>
+    </div>    
+    <div class="bottom-buttons-containter">
+        <button type="button" id="dataBtn" disabled>Zapisz konfigurację</button>
+        <button type="button" id="lightBtn" disabled>Włącz oświetlenie nastrojowe</button>
+    </div>
+    <script>
+        const container = document.getElementById('videoContainer');
+        const markers = document.querySelectorAll('.marker');
+        const img = document.getElementById('cameraStream');
+
+        const streamBtn = document.getElementById('streamBtn');
+
+        const colourPickerBtn = document.getElementById('colourPickerBtn');
+        const pickerWrapper = document.getElementById('pickerWrapper');
+        const canvas = document.getElementById('colourCanvas');
+        const ctx = canvas.getContext('2d');
+        const colourPreview = document.getElementById('colourPreview');
+        const inputR = document.getElementById('inputR');
+        const inputG = document.getElementById('inputG');
+        const inputB = document.getElementById('inputB');
+        const colourSendBtn = document.getElementById('colourSendBtn');
+
+        const helpBtn = document.getElementById('helpBtn');
+        const placeholder = document.getElementById('streamPlaceholder');
+        const dataBtn = document.getElementById('dataBtn');
+        const lightBtn = document.getElementById('lightBtn');
+
+        const markerMessage = document.getElementById('markerMessage');
+        const helpText = document.getElementById('helpText');
+
+        const overlaySvg = document.getElementById('overlaySvg');
+        const maskPolygon = document.getElementById('maskPolygon');
+        const borderPolygon = document.getElementById('borderPolygon');
+
+        let activeMarker = null;
+        let isStreaming = false;
+
+        dataBtn.disabled = true;
+        lightBtn.disabled = true;
+
+        let isDragging = false;
+        let lastSend = 0;
+
+function drawPalette() {
+    const gradH = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    gradH.addColorStop(0,    'rgb(255, 0, 0)');
+    gradH.addColorStop(0.17, 'rgb(255, 255, 0)');
+    gradH.addColorStop(0.33, 'rgb(0, 255, 0)');
+    gradH.addColorStop(0.5,  'rgb(0, 255, 255)');
+    gradH.addColorStop(0.67, 'rgb(0, 0, 255)');
+    gradH.addColorStop(0.83, 'rgb(255, 0, 255)');
+    gradH.addColorStop(1,    'rgb(255, 0, 0)');
+    ctx.fillStyle = gradH;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const gradV = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradV.addColorStop(0,   'rgba(255, 255, 255, 1)');
+    gradV.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+    gradV.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+    gradV.addColorStop(1,   'rgba(0, 0, 0, 1)');
+    ctx.fillStyle = gradV;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function updateColour(r, g, b, send = true) {
+    r = Math.max(0, Math.min(255, parseInt(r) || 0));
+    g = Math.max(0, Math.min(255, parseInt(g) || 0));
+    b = Math.max(0, Math.min(255, parseInt(b) || 0));
+
+    colourPreview.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+    inputR.value = r;
+    inputG.value = g;
+    inputB.value = b;
+}
+
+    function pickColour(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(clientX - rect.left)));
+        const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(clientY - rect.top)));
+        const p = ctx.getImageData(x, y, 1, 1).data;
+        updateColour(p[0], p[1], p[2]);
+    }
+
+    colourPickerBtn.addEventListener('click', () => {
+        
+        const isShown = pickerWrapper.classList.toggle('show');
+        if (isShown)
+        {
+            colourPickerBtn.classList.add('active');
+            colourPickerBtn.textContent = 'Ukryj wybór koloru';
+        }
+        else 
+        {
+            colourPickerBtn.classList.remove('active');
+            colourPickerBtn.textContent = 'Wybór koloru';
+        }
+        if (isShown) drawPalette();
+    });
+
+    canvas.addEventListener('mousedown', (e) => { isDragging = true; pickColour(e); });
+    window.addEventListener('mousemove', (e) => { if (isDragging) pickColour(e); });
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    canvas.addEventListener('touchstart', (e) => { isDragging = true; pickColour(e); }, { passive: false });
+    window.addEventListener('touchmove', (e) => { if (isDragging) { pickColour(e); e.preventDefault(); } }, { passive: false });
+    window.addEventListener('touchend', () => { isDragging = false; });
+
+    const manualInput = () => updateColour(inputR.value, inputG.value, inputB.value, true);
+    inputR.addEventListener('input', manualInput);
+    inputG.addEventListener('input', manualInput);
+    inputB.addEventListener('input', manualInput);
+
+        function disableStream()
+        {
+            img.src = "";
+            img.style.display = "none";
+            placeholder.style.display = "flex";
+            markers.forEach(m => m.style.display = "none");
+            overlaySvg.style.display = "none";
+            markerMessage.style.visibility = "hidden";
+            markerMessage.style.opacity = "0";
+            // Zmiana przycisku
+            streamBtn.textContent = "Włącz podgląd na żywo";
+            streamBtn.classList.remove('active');
+
+        }
+        const updateMask = () =>
+        {
+            const p1=document.getElementById('p1');        
+            const p2=document.getElementById('p2');
+            const p3=document.getElementById('p3');
+            const p4=document.getElementById('p4');
+
+            const p1_x = parseFloat(p1.style.left);
+            const p1_y = parseFloat(p1.style.top);
+            const p2_x = parseFloat(p2.style.left);
+            const p2_y = parseFloat(p2.style.top);
+            const p3_x = parseFloat(p3.style.left);
+            const p3_y = parseFloat(p3.style.top);
+            const p4_x = parseFloat(p4.style.left);
+            const p4_y = parseFloat(p4.style.top);
+
+            const pointsString = `${p1_x},${p1_y} ${p2_x},${p2_y} ${p3_x},${p3_y} ${p4_x},${p4_y}`;
+
+            maskPolygon.setAttribute('points', pointsString);
+            borderPolygon.setAttribute('points', pointsString)
+        }
+
+        streamBtn.addEventListener('click', () =>
+        {
+            if (!isStreaming)
+            {
+                // Uruchomienie strumienia
+                img.src = `http://${window.location.hostname}:81/stream`;
+                img.style.display = "block";
+                placeholder.style.display = "none";
+
+                // Pokazanie markerów i maski
+                markers.forEach(m => m.style.display = "block");
+                overlaySvg.style.display ="block";
+
+                updateMask();
+
+                // Zmiana przycisku
+                streamBtn.textContent = "Wyłącz podgląd na żywo";
+                streamBtn.classList.add('active');
+
+                markerMessage.style.visibility = "visible";
+                markerMessage.style.opacity = "1";
+
+                isStreaming = true;
+                dataBtn.disabled = false;
+            } 
+            else
+            {
+                disableStream();
+                streamBtn.textContent = "Włącz podgląd na żywo";
+                streamBtn.classList.remove('active');
+
+                isStreaming = false;
+                dataBtn.disabled = true;
+            }
+        })
+        // Przeciąganie dla każdego markera
+        markers.forEach(marker => 
+            {
+                const startDrag = (e) =>
+                {
+                    activeMarker = marker;
+                    e.preventDefault();
+                };
+                marker.addEventListener('mousedown', startDrag);
+                marker.addEventListener('touchstart', startDrag, {passive: false});
+            }
+        );
+
+        // Funkcja obliczająca nową pozycję punktu
+        const handleMove = (clientX, clientY) =>
+        {
+            if (!activeMarker) return;
+
+            const rect = container. getBoundingClientRect();
+
+            let x = clientX - rect.left;
+            let y = clientY - rect.top;
+
+            // Ograniczenie ruchu markerów do obrazu
+            x = Math.max(0, Math.min(x, rect.width));
+            y = Math.max(0, Math.min(y, rect.height));
+
+            const pctX = (x / rect.width) * 100;
+            const pctY = (y / rect.height) * 100;
+
+            activeMarker.style.left = `${pctX}%`;
+            activeMarker.style.top = `${pctY}%`;
+
+            updateMask();
+        };
+        // Nasłuchiwanie ruchu na poziomie całego okna
+        window.addEventListener('mousemove', (e) =>
+        {
+            if (activeMarker)
+            {     
+                handleMove(e.clientX, e.clientY);
+            }
+        });
+
+        window.addEventListener('touchmove', (e) =>
+        {
+            if (activeMarker && e.touches.length > 0)
+            {
+                handleMove(e.touches[0].clientX, e.touches[0].clientY);
+                e.preventDefault();
+            }
+        }, {passive: false}
+        );
+
+        const endDrag = () =>
+        {
+            activeMarker = null;
+        };
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+
+        dataBtn.addEventListener('click', () =>
+        {
+            if (dataBtn.disabled == false)
+            {
+                const p1 = document.getElementById("p1");
+                const p2 = document.getElementById("p2");
+                const p3 = document.getElementById("p3");
+                const p4 = document.getElementById("p4");
+
+                const obj =
+                [
+                    [parseFloat(p1.style.left), parseFloat(p1.style.top)],
+                    [parseFloat(p2.style.left), parseFloat(p2.style.top)],
+                    [parseFloat(p3.style.left), parseFloat(p3.style.top)],
+                    [parseFloat(p4.style.left), parseFloat(p4.style.top)]
+                ];
+
+                const markerPosition_json = JSON.stringify(obj);
+                console.log(markerPosition_json);
+
+                // WYSŁANIE DANYCH DO ESP
+                fetch('/save_markers_position',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: markerPosition_json
+                    }
+                )
+                .then(response=> {
+                    if (response.ok)
+                    {
+                        alert("Pozycja markerów zapisana w pamięci flash ESP32-S3.");
+                        lightBtn.disabled = false;
+                    } else
+                    {
+                        alert("Błąd zapisu markerów w pamięci flash ESP32-S3");
+                    }
+                })
+                .catch(error => {
+                    console.error("Błąd sieci: ", error);
+                });
+            }
+        })
+
+        fetch('/markers.json')
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+            throw new Error("Brak zapisanego pliku konfiguracji.");
+        })
+        .then(savedCoordinates => {
+            const p1 = document.getElementById("p1");
+            const p2 = document.getElementById("p2");
+            const p3 = document.getElementById("p3");
+            const p4 = document.getElementById("p4");
+
+            p1.style.left = `${savedCoordinates[0][0]}%`; 
+            p1.style.top = `${savedCoordinates[0][1]}%`;
+
+            p2.style.left = `${savedCoordinates[1][0]}%`;
+            p2.style.top = `${savedCoordinates[1][1]}%`;
+
+            p3.style.left = `${savedCoordinates[2][0]}%`;
+            p3.style.top = `${savedCoordinates[2][1]}%`;
+
+            p4.style.left = `${savedCoordinates[3][0]}%`;
+            p4.style.top = `${savedCoordinates[3][1]}%`;
+
+            updateMask();
+            console.log("Wczytano poprzednie pozycje markerów");
+        })
+        .catch(error => {
+            console.log("Domyślne ustawienie markerów: ", error.message);
+        })
+
+        lightBtn.addEventListener('click', async () =>
+        {
+                if (!isStreaming)
+                {
+                    isStreaming = true;
+                    try {
+                        await fetch('/turn_lights',
+                                {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'text/plain'
+                                    },
+                                    body: 'OFF'
+                                }
+                            );
+                    } catch(error) {
+                            console.error("Błąd sieci: ", error);
+                        };
+                    // Uruchomienie strumienia
+                    img.src = `http://${window.location.hostname}:81/stream`;
+                    img.style.display = "block";
+                    placeholder.style.display = "none";
+                    
+                    // Pokazanie markerów i maski
+                    markers.forEach(m => m.style.display = "block");
+                    overlaySvg.style.display ="block";
+
+                    // Zmiana przycisku
+                    streamBtn.textContent = "Włącz podgląd na żywo";
+                    streamBtn.classList.add('active');
+
+                    updateMask();
+                    markerMessage.style.visibility = "visible";
+                    markerMessage.style.opacity = "1";
+                    isStreaming = true;
+                    dataBtn.disabled = false;
+                     // Zmiana przycisku
+                    lightBtn.textContent = "Włącz oświetlenie nastrojowe";
+
+                }   
+               
+                else
+                {   
+                    disableStream();
+                    lightBtn.textContent = "Wyłącz oświetlenie nastrojowe";
+                    isStreaming = false;
+                    dataBtn.disabled = true;
+                    fetch('/turn_lights',
+                            {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'text/plain'
+                                },
+                                body: 'ON'
+                            }
+                        )
+                    .catch(error => {
+                            console.error("Błąd sieci: ", error);
+                        });
+                }
+            
+        })
+
+        colourSendBtn.addEventListener('click', () => {
+            const r = parseInt(inputR.value) || 0;
+            const g = parseInt(inputG.value) || 0;
+            const b = parseInt(inputB.value) || 0;
+
+            fetch('/set_colour', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify([r, g, b])
+            })
+            .then (response=> {
+                if (response.ok)
+                {
+                    alert("Wysłano kolor!")
+                    console.log("Kolor wysłany pomyślnie");
+                }
+                else
+                {
+                    console.error("Błąd wysyłania koloru");
+                }
+            })
+            .catch(err => console.error("Błąd sieci: ", err));
+        })
+
+        helpBtn.addEventListener('click', () =>
+        {
+            if (helpText.style.visibility != "visible")
+            {
+                helpText.style.visibility = "visible";
+                helpText.style.opacity = 1;
+                helpBtn.classList.add("active");
+            } 
+            else
+            {
+                helpText.style.visibility = "hidden";
+                helpText.style.opacity = 0;
+                helpBtn.classList.remove("active");
+            }
+        })
+    </script>
+
+    <footer>
+    </footer>
+</body>
+</html>

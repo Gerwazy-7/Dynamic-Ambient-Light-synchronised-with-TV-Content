@@ -1,0 +1,8 @@
+**/build/
+**/managed_components/
+**/.cache/
+**/.clangd/
+**/.vscode/
+**/.devcontainer/
+sdkconfig.old
+*.log
