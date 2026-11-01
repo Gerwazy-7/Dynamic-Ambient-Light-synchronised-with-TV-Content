@@ -17,20 +17,14 @@ void app_main(void)
     init_jpeg = false;
     lights_on = false;
     
-    // Inicjalizacja LittleFS
-    init_littleFS();
-    
-    // Inicjalizacja AP
-    init_wifi_ap_mode();
+    camera_manager_init();
 
+    init_littleFS();
+    init_wifi_ap_mode();
     esp_now_initialization();
 
-    init_camera_raw();
-    
-    // Uruchomienie serwera
     start_webserver();
 
-     
     while(1)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));

@@ -4,6 +4,8 @@
 #include "esp_err.h"
 #include "esp_camera.h"
 #include "sensor.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 // ESP pin definition
 #define PWDN_GPIO_NUM -1
@@ -25,9 +27,16 @@
 #define HREF_GPIO_NUM 7
 #define PCLK_GPIO_NUM 13
 
+#define FRAME_RESOLUTION FRAMESIZE_QVGA
+
 extern bool init_raw;
 extern bool init_jpeg;
 extern framesize_t framesize;
+
+void camera_manager_init(void);
+bool camera_acquire(uint32_t timeout_ms); // false = zajęta
+void camera_release(void);
+esp_err_t camera_apply_settings_live(int wb, int ae, int br, int co, int sa);
 
 /**
  * 

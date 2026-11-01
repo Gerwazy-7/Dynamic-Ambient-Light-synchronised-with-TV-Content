@@ -22,17 +22,22 @@ static led_lut out_lut_data;
 led_struct *led_points = &led_points_data;
 led_lut *out_lut = &out_lut_data;
 
-static TaskHandle_t ambilight_task_handle = NULL;
 static volatile bool ambilight_running = false;
-extern led_lut ambilight_lut;
+static volatile bool stream_stop_req = false;
+
+static void ambilight_stop(void)
+{
+    lights_on = false;
+    for (int i = 0; i < 500 && ambilight_running; i++)
+    {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
 
 void ambilight_task (void *pvParameters)
 {
-    ambilight_running = true;
     int64_t t0 = esp_timer_get_time();
     int frames = 0;
-    
-    //ESP_LOGI("AMBILIGHT", "Watek ambilight wystartowal");
     output_rgb_struct colour_results;
 
     while (lights_on)
@@ -54,16 +59,10 @@ void ambilight_task (void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(1));
     }
     vTaskDelay(pdMS_TO_TICKS(50));
-    for (int i = 0; i < ZONES_NUMBER; i++)
-    {
-        colour_results.rgb[i].r = 0;
-        colour_results.rgb[i].g = 0;
-        colour_results.rgb[i].b = 0;
-        
-    }
+    memset(&colour_results, 0, sizeof(colour_results));
     send_led_colours(&colour_results);
 
-    ambilight_task_handle = NULL;
+    camera_release();
     ambilight_running = false;
     vTaskDelete(NULL);
 }
@@ -105,18 +104,9 @@ static esp_err_t camera_settings_handler(httpd_req_t *req)
     sscanf(buf, " { \"whitebal\" : %d, \"ae_level\" : %d, \"brightness\" : %d, \"contrast\" : %d, \"saturation\" : %d} ", 
         &wb, &ae, &br, &co, &sa);
     
-    sensor_t *s = esp_camera_sensor_get();
-    if (s != NULL)
-    {
-        s -> set_whitebal(s, wb);
-        s -> set_ae_level(s, ae);
-        s -> set_brightness(s, br);
-        s -> set_contrast(s, co);
-        s -> set_saturation(s, sa);
-        ESP_LOGI("CAM_SET", "Zastosowano ustawienia do sensora: WB=%d AE=%d BR=%d CO=%d SA=%d", wb, ae, br, co, sa);
-    }
-
+    camera_apply_settings_live(wb, ae, br, co, sa);
     httpd_resp_sendstr(req, "OK");
+    
     return ESP_OK;
 }
 
@@ -234,49 +224,51 @@ static esp_err_t lights_handler(httpd_req_t *req)
     buf[ret] = '\0';
     if (!strcmp(buf, "ON"))
     {
-        calculate_led_points(led_points);
-        calculate_zones_LUT(led_points, out_lut);
-        //ESP_LOGI("LED_ZONES", "Obliczono strefy poboru probek koloru");
-        if (is_streaming)
+        if (ambilight_running)
         {
-            lights_on = true;
-            int wait_ms = 0;
-            while (is_streaming && wait_ms < 1500)
-            {
-                vTaskDelay(pdMS_TO_TICKS(10));
-                wait_ms += 10;
-            }
+            httpd_resp_sendstr(req, "OK");
+            return ESP_OK;
         }
         
-        if (!ambilight_running)
-        { 
-            init_camera_raw();
-            lights_on = true;
-            xTaskCreatePinnedToCore(
-                ambilight_task,
-                "ambilight_task",
-                4096,
-                NULL,
-                5,
-                &ambilight_task_handle,
-                1
-            );
-            //ESP_LOGI("LIGHTS", "Podświetlenie włączone");
-        }
-        else
+        stream_stop_req = true;
+        bool got = camera_acquire(5000);
+        stream_stop_req = false;
+
+        if (!got)
         {
-            //ESP_LOGW("LIGHTS", "Watek ambilight juz dziala");
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Camera occupied");
+            return ESP_FAIL;
+        }
+
+        if (init_camera_raw() != ESP_OK ||
+            calculate_led_points(led_points) != ESP_OK ||
+            calculate_zones_LUT(led_points, out_lut) != ESP_OK)
+        {
+            camera_release();
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Error enabling ambilight");
+            return ESP_FAIL;
+        }
+
+        lights_on = true;
+        ambilight_running = true;
+        if (xTaskCreatePinnedToCore(ambilight_task, 
+                            "ambilight_task",
+                            8192,
+                            NULL,
+                            5,
+                            NULL,
+                            1) != pdPASS)
+        {
+            lights_on = false;
+            ambilight_running = false;
+            camera_release();
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Cannot start ambilight task");
+            return ESP_FAIL;
         }
     }
     else if (!strcmp(buf, "OFF"))
     {
-        lights_on = false;
-        int wait_ms = 0;
-        while (ambilight_task_handle != NULL && wait_ms < 500)
-        {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            wait_ms += 10;
-        }
+        ambilight_stop();
     }
     else
     {
@@ -288,17 +280,7 @@ static esp_err_t lights_handler(httpd_req_t *req)
 
 esp_err_t set_colour_handler(httpd_req_t *req)
 {
-    if (ambilight_task_handle != NULL)
-    {
-        lights_on = false;
-        int wait_ms = 0;
-        while (ambilight_task_handle != NULL && wait_ms < 500)
-        {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            wait_ms += 10;
-        }
-    }
-
+    ambilight_stop();
     char buf[100];
     
     int remaining = req->content_len;
@@ -353,16 +335,17 @@ esp_err_t set_colour_handler(httpd_req_t *req)
 esp_err_t stream_get_handler(httpd_req_t *req)
 {
     lights_on = false;
-    for (int i = 0; i < 300 && ambilight_running; i++)
+    if (!camera_acquire(5000))
     {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    if (ambilight_running)
-    {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Ambilight nie zatrzymał się");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Camera is occupied");
         return ESP_FAIL;
     }
-    init_camera_jpeg();
+    if (init_camera_jpeg() != ESP_OK)
+    {
+        camera_release();
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Camera error");
+        return ESP_FAIL;
+    }
 
     camera_fb_t* fb = NULL;
     esp_err_t res = ESP_OK;
@@ -413,17 +396,16 @@ esp_err_t stream_get_handler(httpd_req_t *req)
 
         // Zwolnienie bufora
         esp_camera_fb_return(fb);
-
         vTaskDelay(pdMS_TO_TICKS(40));
 
-        if(res != ESP_OK || lights_on == true)
+        if(res != ESP_OK || stream_stop_req)
         {
             break;
         }
     }
     httpd_resp_send_chunk(req, NULL, 0);
     is_streaming = false;
-    //ESP_LOGI("STREAM", "Strumień wideo zakończony");
+    camera_release();
     return res;
 }
 
