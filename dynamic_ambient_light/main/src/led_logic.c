@@ -8,6 +8,7 @@
 #include <sys/types.h>
 
 #define EMA_coef 0.3
+#define R_GAIN 1.5f
 
 esp_err_t calculate_led_points(led_struct *led_points)
 {
@@ -104,8 +105,7 @@ esp_err_t calculate_zones_LUT(led_struct *led_points, led_lut *out_lut)
         // Left boundary
         if (i == 0)
         {
-            left_boundary = led_points->bottom[0][0];
-            
+            left_boundary = led_points->bottom[0][0];   
         }
         else
         {
@@ -323,11 +323,9 @@ esp_err_t calculate_zones_LUT(led_struct *led_points, led_lut *out_lut)
 
 static rgb_struct prev_results[ZONES_NUMBER] = {0};
 
+
 esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struct *results)
 {
-    static uint32_t frame_cnt = 0;
-    bool do_log = (frame_cnt++ % 30) == 0;
-
     uint16_t *buf = (uint16_t *)fb->buf;
     rgb_struct temp_rgb = {};
 
@@ -346,13 +344,6 @@ esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struc
             temp_rgb.r = ((cur_pixel >> 11) & 0x1F) << 3;
             temp_rgb.g = ((cur_pixel >> 5)  & 0x3F) << 2;
             temp_rgb.b = ((cur_pixel)       & 0x1F) << 3;
-
-            /*
-            if (do_log && (i == 0 || i == 30))
-            {
-                /ESP_LOGI("COL", "z%d p%d raw=0x%04X r=%d g=%d b=%d",
-                 i, j, cur_pixel, temp_rgb.r, temp_rgb.g, temp_rgb.b);
-            }*/
 
             uint8_t max_val = temp_rgb.r;
             if (temp_rgb.g > max_val)
@@ -374,7 +365,7 @@ esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struc
                 min_val = temp_rgb.b;
             }
 
-            if (max_val < 15)
+            if (max_val < 40)
             {
                 continue;
             }
@@ -388,23 +379,34 @@ esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struc
             total_weight += weight;
         }
 
-        if (total_weight == 0)
-        {
-            results->rgb[i].r = 0 + (1-EMA_coef) * prev_results[i].r;
-            results->rgb[i].g = 0 + (1-EMA_coef) * prev_results[i].g;
-            results->rgb[i].b = 0 + (1-EMA_coef) * prev_results[i].b;
-        }
-        else
-        {
-            results->rgb[i].r = (uint8_t)(EMA_coef * ((float)r_weighted / total_weight) + ((1-EMA_coef) * prev_results[i].r));
-            results->rgb[i].g = (uint8_t)(EMA_coef * ((float)g_weighted / total_weight) + ((1-EMA_coef) * prev_results[i].g));
-            results->rgb[i].b = (uint8_t)(EMA_coef * ((float)b_weighted / total_weight) + ((1-EMA_coef) * prev_results[i].b));
+        float target_r = 0;
+        float target_g = 0;
+        float target_b = 0;
 
+        if (total_weight > 0)
+        {
+            target_r = (float)r_weighted / total_weight;
+            target_g = (float)g_weighted / total_weight;
+            target_b = (float)b_weighted / total_weight;
         }
 
-        prev_results->r = results->rgb[i].r;
-        prev_results->g = results->rgb[i].g;
-        prev_results->b = results->rgb[i].b;
+        uint8_t filtered_r = (uint8_t)(EMA_coef * target_r + (1-EMA_coef) * prev_results[i].r + 0.5f);
+        uint8_t filtered_g = (uint8_t)(EMA_coef * target_g + (1-EMA_coef) * prev_results[i].g + 0.5f);
+        uint8_t filtered_b = (uint8_t)(EMA_coef * target_b + (1-EMA_coef) * prev_results[i].b + 0.5f);
+
+        prev_results[i].r = filtered_r;
+        prev_results[i].g = filtered_g;
+        prev_results[i].b = filtered_b;
+
+        int r_out = (int)(filtered_r * R_GAIN);
+        if(r_out > 255)
+        {
+            r_out = 255;
+        }
+
+        results->rgb[i].r = r_out;
+        results->rgb[i].g = filtered_g;
+        results->rgb[i].b = filtered_b;
     }
     return ESP_OK;
 }

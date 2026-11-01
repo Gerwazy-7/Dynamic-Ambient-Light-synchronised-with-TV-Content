@@ -9,6 +9,7 @@
 #include "led_logic.h"
 #include <string.h>
 #include "esp_timer.h"
+#include "sensor.h"
 
 static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace; boundary=" PART_BOUNDARY;
 static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
@@ -65,6 +66,58 @@ void ambilight_task (void *pvParameters)
     ambilight_task_handle = NULL;
     ambilight_running = false;
     vTaskDelete(NULL);
+}
+
+static esp_err_t camera_settings_handler(httpd_req_t *req)
+{
+    char buf[128];
+    int remaining = req->content_len;
+    int received = 0;
+
+    if (remaining >= sizeof(buf)) 
+    {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Zbyt duże dane");
+        return ESP_FAIL;
+    }
+
+    while (received < remaining)
+    {
+        int ret = httpd_req_recv(req, buf + received, remaining - received);
+        if (ret <= 0)
+        {
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buf[received] = '\0';
+
+    // 1. Zapis do pliku LittleFS
+    FILE *f = fopen("/web/cam_settings.json", "w");
+    if (f == NULL) {
+        ESP_LOGE("CAM_SET", "Nie udalo sie otworzyc pliku do zapisu");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Błąd zapisu pliku");
+        return ESP_FAIL;
+    }
+    fprintf(f, "%s", buf);
+    fclose(f);
+
+    int wb = 1, ae = 0, br = 0, co = 0, sa = 0;
+    sscanf(buf, " { \"whitebal\" : %d, \"ae_level\" : %d, \"brightness\" : %d, \"contrast\" : %d, \"saturation\" : %d} ", 
+        &wb, &ae, &br, &co, &sa);
+    
+    sensor_t *s = esp_camera_sensor_get();
+    if (s != NULL)
+    {
+        s -> set_whitebal(s, wb);
+        s -> set_ae_level(s, ae);
+        s -> set_brightness(s, br);
+        s -> set_contrast(s, co);
+        s -> set_saturation(s, sa);
+        ESP_LOGI("CAM_SET", "Zastosowano ustawienia do sensora: WB=%d AE=%d BR=%d CO=%d SA=%d", wb, ae, br, co, sa);
+    }
+
+    httpd_resp_sendstr(req, "OK");
+    return ESP_OK;
 }
 
 esp_err_t file_server_get_handler(httpd_req_t *req)
@@ -395,6 +448,15 @@ esp_err_t start_webserver(void)
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server_main, &save_markers_uri);
+        
+        httpd_uri_t camera_settings_uri = 
+        {
+            .uri = "/cam_settings",
+            .method = HTTP_POST,
+            .handler = camera_settings_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server_main, &camera_settings_uri);
         
         httpd_uri_t colour_pick_uri =
         {

@@ -14,9 +14,9 @@
 #define VERTICAL_DIODES 13
 
 //NATURAL WHITE
-#define RW 240
-#define GW 215
-#define BW 200
+#define RW 255
+#define GW 160
+#define BW 140
 
 #define ZONES_NUMBER (VERTICAL_DIODES * 2 + HORIZONTAL_DIODES * 2)
 
@@ -93,7 +93,8 @@ static void on_data_recv(const esp_now_recv_info_t *recv_info, const uint8_t *da
         for (int i = 0; i < ZONES_NUMBER; i++)
         {
             rgbw_struct output = rgb_to_rgbw(&frame->rgb[i]);
-            led_strip_set_pixel_rgbw(led_strip, i, output.r, output.g, output.b, output.w);
+            //led_strip_set_pixel_rgbw(led_strip, i, output.r, output.g, output.b, output.w);
+            led_strip_set_pixel_rgbw(led_strip, i, frame->rgb[i].r, frame->rgb[i].g, frame->rgb[i].b, 0);
         } 
         led_strip_refresh(led_strip);
     }
@@ -166,3 +167,73 @@ void app_main(void)
     ESP_LOGW(TAG, "Moj adres MAC: " MACSTR, MAC2STR(my_mac));
     ESP_LOGW(TAG, "--------------------------------------------------");
 }
+
+/*
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+#include "led_strip.h"
+
+// ========================================================
+// 1. TUTAJ ZMIENIASZ WARTOŚCI DO TESTÓW (Zakres: 0 - 255)
+// ========================================================
+#define TEST_R   255    // Czerwony
+#define TEST_G   208  // Zielony
+#define TEST_B   145    // Niebieski
+#define TEST_W   0  // Dioda biała (np. 100 na test czystej bieli)
+
+// ========================================================
+// KONFIGURACJA SPRZĘTOWA
+// ========================================================
+#define LED_STRIP_GPIO       4
+#define HORIZONTAL_DIODES    20
+#define VERTICAL_DIODES      13
+#define LED_COUNT (VERTICAL_DIODES * 2 + HORIZONTAL_DIODES * 2) // 66 diod
+
+static const char *TAG = "LED_TEST";
+static led_strip_handle_t led_strip;
+
+static void init_leds(void)
+{
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = LED_STRIP_GPIO,
+        .max_leds = LED_COUNT,
+        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRBW, // SK6812 4-kanałowe
+        .led_model = LED_MODEL_SK6812,
+        .flags = {
+            .invert_out = false,
+        }
+    };
+
+    led_strip_rmt_config_t rmt_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 10 * 1000 * 1000, // 10 MHz
+        .flags.with_dma = false,
+    };
+
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &led_strip));
+    led_strip_clear(led_strip);
+    ESP_LOGI(TAG, "Pasek SK6812 RGBW zainicjalizowany na GPIO %d (%d diod)", LED_STRIP_GPIO, LED_COUNT);
+}
+
+void app_main(void)
+{
+    init_leds();
+
+    // Pierwsze 33 diody: TYLKO FIZYCZNY CHIP BIAŁY
+    for (int i = 0; i < 33; i++) {
+        led_strip_set_pixel_rgbw(led_strip, i, 0, 0, 0, 250);
+    }
+
+    // Kolejne 33 diody: MIESZANKA RGB (nasza próba podrobienia chipu W)
+    for (int i = 33; i < 66; i++) {
+            led_strip_set_pixel_rgbw(led_strip, i, 255, 160, 140, 0); // Tu zmieniasz wartości
+    }
+
+    led_strip_refresh(led_strip);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}*/

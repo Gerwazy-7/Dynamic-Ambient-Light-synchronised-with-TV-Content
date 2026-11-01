@@ -99,6 +99,40 @@
             gap: 10px;
         }
 
+        #camPanel {
+            opacity: 0;
+            width: 90%;
+            max-width: 240px;
+            text-align: left;
+            margin-top: 5px;
+            max-height: 0;
+            overflow: hidden;
+            transition: opacity 0.4s ease, max-height 0s ease 0.4s;
+        }
+
+        #camPanel.open {
+            max-height: 300px;
+            opacity: 1;
+            transition: max-height 0.5s ease, opacity 0.5s ease;
+        }
+
+        .cam-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .cam-row input[type=range] {
+            width: 150px;
+        }
+
+        #camSaveBtn {
+            display: block;
+            margin: 10px auto 0;
+            margin-bottom: 10px;
+        }
 
         .picker-wrapper {
             display: flex; 
@@ -106,20 +140,16 @@
             align-items: center;
             gap: 15px;
             background-color: #0a1128;
-            padding: 0 20px;
-            max-height: 0;
-            overflow: hidden;
+            padding: 20px;
             opacity: 0;
             visibility: hidden;
             border-radius: 12px;
             box-shadow: 0px 0px 15px #040711;
             border: 0px solid #00580f; 
-            transition: opacity 0.5s ease, visibility 0.5s ease, max-height 0.5s ease, padding 0.5s ease, border 0.5s ease;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
         }
 
         .picker-wrapper.show {
-            max-height: 400px;
-            padding: 20px;
             opacity: 1;
             visibility: visible;
         }
@@ -178,7 +208,7 @@
         .rgb-field input:focus {
         outline: none;
         border-color: #d12929;
-}
+        }
 
         #helpText {
             visibility: hidden;
@@ -297,6 +327,30 @@
     </div>
     <div class="arrange">
         <div class="side-panel">
+            <button type="button" id="camSetBtn">Ustawienia kamery</button>
+                <div id="camPanel">
+                    <div class="cam-row">
+                        <label for="cam_whitebal">Auto balans bieli</label>
+                        <input type="checkbox" id="cam_whitebal" data-cam="whitebal">
+                    </div>
+                    <div class="cam-row">
+                        <label for="cam_ae_level">Ekspozycja</label>
+                        <input type="range" id="cam_ae_level" min="-2" max="2" step="1" data-cam="ae_level">
+                    </div>
+                    <div class="cam-row">
+                        <label for="cam_brightness">Jasność</label>
+                        <input type="range" id="cam_brightness" min="-2" max="2" step="1" data-cam="brightness">
+                    </div>
+                    <div class="cam-row">
+                        <label for="cam_contrast">Kontrast</label>
+                        <input type="range" id="cam_contrast" min="-2" max="2" step="1" data-cam="contrast">
+                    </div>
+                    <div class="cam-row">
+                        <label for="cam_saturation">Nasycenie</label>
+                        <input type="range" id="cam_saturation" min="-2" max="2" step="1" data-cam="saturation">
+                    </div>
+                    <button type="button" id="camSaveBtn">Zapisz ustawienia</button>
+                </div>
             <button type="button" id="colourPickerBtn">Wybór koloru</button>
             <div id="pickerWrapper" class="picker-wrapper">
                 <canvas id="colourCanvas" width="220" height="110"></canvas>
@@ -320,29 +374,35 @@
                 <button type="button" id="colourSendBtn">Zapisz kolor</button>
             </div>
         </div>
-        <div class="video-container" id="videoContainer">
-            <div id="streamPlaceholder">Podgląd jest wyłączony</div>
+        <div class="center-column">
+            <div class="video-container" id="videoContainer">
+                <div id="streamPlaceholder">Podgląd jest wyłączony</div>
 
-            <img id="cameraStream" src="" alt="Podgląd z kamery na żywo">
+                <img id="cameraStream" src="" alt="Podgląd z kamery na żywo">
 
-            <svg id="overlaySvg" viewBox="0 0 100 100" preserveAspectRatio="none">
-                <defs>
-                    <mask id="quadMask">
-                        <!--Tło-->
-                        <rect x="0" y="0" width="100" height="100" fill="white" />
-                        <!--Wnętrze-->
-                        <polygon id="maskPolygon" points="20,80 80,80 80,20 20,20" fill="black"/>
-                    </mask>
-                </defs>
-                <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.55)" mask="url(#quadMask)"/>
-                <polygon id="borderPolygon" points="20,80 80,80 80,20 20,20" fill="none" stroke="#000000" stroke-dasharray="1 1" stroke-width="0.5"/>
-            </svg>
+                <svg id="overlaySvg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                        <mask id="quadMask">
+                            <!--Tło-->
+                            <rect x="0" y="0" width="100" height="100" fill="white" />
+                            <!--Wnętrze-->
+                            <polygon id="maskPolygon" points="20,80 80,80 80,20 20,20" fill="black"/>
+                        </mask>
+                    </defs>
+                    <rect x="0" y="0" width="100" height="100" fill="rgba(0,0,0,0.55)" mask="url(#quadMask)"/>
+                    <polygon id="borderPolygon" points="20,80 80,80 80,20 20,20" fill="none" stroke="#000000" stroke-dasharray="1 1" stroke-width="0.5"/>
+                </svg>
 
-            <div class="marker" id="p1" style="left: 20%; top: 80%;"></div>
-            <div class="marker" id="p2" style="left: 80%; top: 80%;"></div>
-            <div class="marker" id="p3" style="left: 80%; top: 20%;"></div>
-            <div class="marker" id="p4" style="left: 20%; top: 20%;"></div>
-        </div>
+                <div class="marker" id="p1" style="left: 20%; top: 80%;"></div>
+                <div class="marker" id="p2" style="left: 80%; top: 80%;"></div>
+                <div class="marker" id="p3" style="left: 80%; top: 20%;"></div>
+                <div class="marker" id="p4" style="left: 20%; top: 20%;"></div>
+            </div>
+                <div class="bottom-buttons-containter">
+                    <button type="button" id="dataBtn" disabled>Zapisz konfigurację</button>
+                    <button type="button" id="lightBtn" disabled>Włącz oświetlenie nastrojowe</button>
+                </div>
+            </div>
         <div class="side-panel">
             <button type="button" id="helpBtn">Pomoc</button>
             <div id="helpText">
@@ -358,16 +418,16 @@
             </div>
         </div>
     </div>    
-    <div class="bottom-buttons-containter">
-        <button type="button" id="dataBtn" disabled>Zapisz konfigurację</button>
-        <button type="button" id="lightBtn" disabled>Włącz oświetlenie nastrojowe</button>
-    </div>
     <script>
         const container = document.getElementById('videoContainer');
         const markers = document.querySelectorAll('.marker');
         const img = document.getElementById('cameraStream');
 
         const streamBtn = document.getElementById('streamBtn');
+
+        const camSetBtn = document.getElementById('camSetBtn');
+        const camPanel= document.getElementById('camPanel');
+        const camSaveBtn = document.getElementById('camSaveBtn');
 
         const colourPickerBtn = document.getElementById('colourPickerBtn');
         const pickerWrapper = document.getElementById('pickerWrapper');
@@ -394,82 +454,88 @@
         let activeMarker = null;
         let isStreaming = false;
 
-        dataBtn.disabled = true;
-        lightBtn.disabled = true;
-
         let isDragging = false;
         let lastSend = 0;
 
-function drawPalette() {
-    const gradH = ctx.createLinearGradient(0, 0, canvas.width, 0);
-    gradH.addColorStop(0,    'rgb(255, 0, 0)');
-    gradH.addColorStop(0.17, 'rgb(255, 255, 0)');
-    gradH.addColorStop(0.33, 'rgb(0, 255, 0)');
-    gradH.addColorStop(0.5,  'rgb(0, 255, 255)');
-    gradH.addColorStop(0.67, 'rgb(0, 0, 255)');
-    gradH.addColorStop(0.83, 'rgb(255, 0, 255)');
-    gradH.addColorStop(1,    'rgb(255, 0, 0)');
-    ctx.fillStyle = gradH;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+        dataBtn.disabled = true;
+        lightBtn.disabled = true;
 
-    const gradV = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradV.addColorStop(0,   'rgba(255, 255, 255, 1)');
-    gradV.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
-    gradV.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
-    gradV.addColorStop(1,   'rgba(0, 0, 0, 1)');
-    ctx.fillStyle = gradV;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-}
+        camSetBtn.addEventListener('click', () =>
+        {   
+            camPanel.classList.toggle('open');
+            camSetBtn.classList.toggle('active');
+        })
 
-function updateColour(r, g, b, send = true) {
-    r = Math.max(0, Math.min(255, parseInt(r) || 0));
-    g = Math.max(0, Math.min(255, parseInt(g) || 0));
-    b = Math.max(0, Math.min(255, parseInt(b) || 0));
+        function drawPalette() {
+            const gradH = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            gradH.addColorStop(0,    'rgb(255, 0, 0)');
+            gradH.addColorStop(0.17, 'rgb(255, 255, 0)');
+            gradH.addColorStop(0.33, 'rgb(0, 255, 0)');
+            gradH.addColorStop(0.5,  'rgb(0, 255, 255)');
+            gradH.addColorStop(0.67, 'rgb(0, 0, 255)');
+            gradH.addColorStop(0.83, 'rgb(255, 0, 255)');
+            gradH.addColorStop(1,    'rgb(255, 0, 0)');
+            ctx.fillStyle = gradH;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    colourPreview.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
-    inputR.value = r;
-    inputG.value = g;
-    inputB.value = b;
-}
-
-    function pickColour(e) {
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(clientX - rect.left)));
-        const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(clientY - rect.top)));
-        const p = ctx.getImageData(x, y, 1, 1).data;
-        updateColour(p[0], p[1], p[2]);
-    }
-
-    colourPickerBtn.addEventListener('click', () => {
-        
-        const isShown = pickerWrapper.classList.toggle('show');
-        if (isShown)
-        {
-            colourPickerBtn.classList.add('active');
-            colourPickerBtn.textContent = 'Ukryj wybór koloru';
+            const gradV = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradV.addColorStop(0,   'rgba(255, 255, 255, 1)');
+            gradV.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+            gradV.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+            gradV.addColorStop(1,   'rgba(0, 0, 0, 1)');
+            ctx.fillStyle = gradV;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
-        else 
-        {
-            colourPickerBtn.classList.remove('active');
-            colourPickerBtn.textContent = 'Wybór koloru';
+
+        function updateColour(r, g, b, send = true) {
+            r = Math.max(0, Math.min(255, parseInt(r) || 0));
+            g = Math.max(0, Math.min(255, parseInt(g) || 0));
+            b = Math.max(0, Math.min(255, parseInt(b) || 0));
+
+            colourPreview.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+            inputR.value = r;
+            inputG.value = g;
+            inputB.value = b;
         }
-        if (isShown) drawPalette();
-    });
 
-    canvas.addEventListener('mousedown', (e) => { isDragging = true; pickColour(e); });
-    window.addEventListener('mousemove', (e) => { if (isDragging) pickColour(e); });
-    window.addEventListener('mouseup', () => { isDragging = false; });
+        function pickColour(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(clientX - rect.left)));
+            const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(clientY - rect.top)));
+            const p = ctx.getImageData(x, y, 1, 1).data;
+            updateColour(p[0], p[1], p[2]);
+        }
 
-    canvas.addEventListener('touchstart', (e) => { isDragging = true; pickColour(e); }, { passive: false });
-    window.addEventListener('touchmove', (e) => { if (isDragging) { pickColour(e); e.preventDefault(); } }, { passive: false });
-    window.addEventListener('touchend', () => { isDragging = false; });
+        colourPickerBtn.addEventListener('click', () => {
+            
+            const isShown = pickerWrapper.classList.toggle('show');
+            if (isShown)
+            {
+                colourPickerBtn.classList.add('active');
+                colourPickerBtn.textContent = 'Ukryj wybór koloru';
+            }
+            else 
+            {
+                colourPickerBtn.classList.remove('active');
+                colourPickerBtn.textContent = 'Wybór koloru';
+            }
+            if (isShown) drawPalette();
+        });
 
-    const manualInput = () => updateColour(inputR.value, inputG.value, inputB.value, true);
-    inputR.addEventListener('input', manualInput);
-    inputG.addEventListener('input', manualInput);
-    inputB.addEventListener('input', manualInput);
+        canvas.addEventListener('mousedown', (e) => { isDragging = true; pickColour(e); });
+        window.addEventListener('mousemove', (e) => { if (isDragging) pickColour(e); });
+        window.addEventListener('mouseup', () => { isDragging = false; });
+
+        canvas.addEventListener('touchstart', (e) => { isDragging = true; pickColour(e); }, { passive: false });
+        window.addEventListener('touchmove', (e) => { if (isDragging) { pickColour(e); e.preventDefault(); } }, { passive: false });
+        window.addEventListener('touchend', () => { isDragging = false; });
+
+        const manualInput = () => updateColour(inputR.value, inputG.value, inputB.value, true);
+        inputR.addEventListener('input', manualInput);
+        inputG.addEventListener('input', manualInput);
+        inputB.addEventListener('input', manualInput);
 
         function disableStream()
         {
@@ -649,12 +715,55 @@ function updateColour(r, g, b, send = true) {
             }
         })
 
+        fetch('/cam_settings.json')
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            }
+            throw new Error("Brak zapisanego pliku konfiguracji kamery.");
+        })
+        .then (cfg => {
+            document.getElementById("cam_whitebal").checked = (cfg.whitebal === 1);
+            document.getElementById("cam_ae_level").value = cfg.ae_level;
+            document.getElementById("cam_brightness").value = cfg.brightness;
+            document.getElementById("cam_contrast").value = cfg.contrast;
+            document.getElementById("cam_saturation").value = cfg.saturation;
+            console.log("Wczytano zapissane ustawienia kamery");
+        })
+        .catch(err => console.log("Domyślne ustawienia kamery", err));
+
+        camSaveBtn.addEventListener('click', () => {
+            const settings = {
+                whitebal: document.getElementById('cam_whitebal').checked? 1 : 0,
+                ae_level: parseInt(document.getElementById('cam_ae_level').value),
+                brightness: parseInt(document.getElementById('cam_brightness').value),
+                contrast: parseInt(document.getElementById('cam_contrast').value),
+                saturation: parseInt(document.getElementById('cam_saturation').value)
+            };
+
+            fetch('/cam_settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            })
+            .then(res => {
+                if (res.ok) {
+                    console.log("Ustawienia kamery zapisane i zastosowane");
+                }
+                else{ 
+                    alert("Błąd zapisu ustawień kamery")
+                }
+            })
+            .catch(err => console.error("Błąd sieci:", err));
+        });
+        
+
         fetch('/markers.json')
         .then(response => {
             if (response.ok) {
                 return response.json();
             }
-            throw new Error("Brak zapisanego pliku konfiguracji.");
+            throw new Error("Brak zapisanego pliku konfiguracji markerów.");
         })
         .then(savedCoordinates => {
             const p1 = document.getElementById("p1");
