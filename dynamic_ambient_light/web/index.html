@@ -678,12 +678,14 @@
                 const p3 = document.getElementById("p3");
                 const p4 = document.getElementById("p4");
 
+                const round2 = (val) => Math.round(parseFloat(val)*100) / 100;
+
                 const obj =
                 [
-                    [parseFloat(p1.style.left), parseFloat(p1.style.top)],
-                    [parseFloat(p2.style.left), parseFloat(p2.style.top)],
-                    [parseFloat(p3.style.left), parseFloat(p3.style.top)],
-                    [parseFloat(p4.style.left), parseFloat(p4.style.top)]
+                    [round2(p1.style.left), round2(p1.style.top)],
+                    [round2(p2.style.left), round2(p2.style.top)],
+                    [round2(p3.style.left), round2(p3.style.top)],
+                    [round2(p4.style.left), round2(p4.style.top)]
                 ];
 
                 const markerPosition_json = JSON.stringify(obj);

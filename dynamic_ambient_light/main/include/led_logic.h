@@ -13,6 +13,8 @@
 
 #define SAMPLES_VERTICAL 3
 #define SAMPLES_HORIZONTAL 4
+#define LED_POINTS_X (HORIZONTAL_DIODES * SAMPLES_HORIZONTAL)
+#define LED_POINTS_Y (VERTICAL_DIODES * SAMPLES_VERTICAL)
 #define SAMPLES_PER_ZONE (SAMPLES_VERTICAL * SAMPLES_HORIZONTAL)
 #define ZONES_NUMBER (VERTICAL_DIODES*2 + HORIZONTAL_DIODES*2)
 
@@ -20,8 +22,18 @@ typedef struct
 {
     // [0] - X
     // [1] - Y
+    uint16_t bottom[LED_POINTS_X][SAMPLES_VERTICAL][2]; 
+    uint16_t right[LED_POINTS_Y][SAMPLES_HORIZONTAL][2];
+    uint16_t top[LED_POINTS_X][SAMPLES_VERTICAL][2]; 
+    uint16_t left[LED_POINTS_Y][SAMPLES_HORIZONTAL][2]; 
+} zones_map;
+
+typedef struct
+{
+    // [0] - X
+    // [1] - Y
     uint16_t bottom[HORIZONTAL_DIODES][2];
-    uint16_t up[HORIZONTAL_DIODES][2];
+    uint16_t top[HORIZONTAL_DIODES][2];
     uint16_t left[VERTICAL_DIODES][2];
     uint16_t right[VERTICAL_DIODES][2];
 } led_struct;
@@ -48,12 +60,16 @@ typedef struct
     rgb_struct rgb[ZONES_NUMBER];
 } output_rgb_struct;
 
+esp_err_t calculate_map(zones_map *points_map);
+
+esp_err_t calculate_lut(zones_map *points_map, led_lut *out_lut);
+
+esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struct *results);
 
 esp_err_t calculate_led_points(led_struct *led_points);
 
 esp_err_t calculate_zones_LUT(led_struct *led_points, led_lut *out_lut);
 
-esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struct *results);
 
 
 #endif // LED_LOGIC_H

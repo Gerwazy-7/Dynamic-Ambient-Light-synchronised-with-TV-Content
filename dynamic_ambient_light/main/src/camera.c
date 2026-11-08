@@ -199,7 +199,7 @@ esp_err_t init_camera_raw(void)
     {
         ESP_LOGW ("CAMERA", "Błąd set_pll: %d", r);
     }
-    s->set_vflip(s, 1);
+    s->set_vflip(s, 1); 
     apply_saved_camera_settings();
 
     init_jpeg = false;

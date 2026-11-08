@@ -17,9 +17,9 @@ static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %
 volatile bool lights_on;
 volatile bool is_streaming;
 
-static led_struct led_points_data;
+static zones_map led_points_data;
 static led_lut out_lut_data;
-led_struct *led_points = &led_points_data;
+zones_map *points_map = &led_points_data;
 led_lut *out_lut = &out_lut_data;
 
 static volatile bool ambilight_running = false;
@@ -241,8 +241,8 @@ static esp_err_t lights_handler(httpd_req_t *req)
         }
 
         if (init_camera_raw() != ESP_OK ||
-            calculate_led_points(led_points) != ESP_OK ||
-            calculate_zones_LUT(led_points, out_lut) != ESP_OK)
+            calculate_map(points_map) != ESP_OK ||
+            calculate_lut(points_map, out_lut) != ESP_OK)
         {
             camera_release();
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Error enabling ambilight");

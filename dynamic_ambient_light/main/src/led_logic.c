@@ -2,6 +2,7 @@
 #include "camera.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_log_level.h"
 #include "sensor.h"
 #include <math.h>
 #include <stdint.h>
@@ -9,32 +10,41 @@
 
 #define EMA_coef 0.3
 #define R_GAIN 1.5f
+#define ZONE_MARGIN 9
 
-esp_err_t calculate_led_points(led_struct *led_points)
+float calculate_determinant(float a, float b, float c, float d)
+{
+    return a * d - b * c;
+}
+
+esp_err_t calculate_map(zones_map *points_map)
 {
     int res_width = resolution[framesize].width;
     int res_height = resolution[framesize].height;
 
     float coordinates[4][2] = 
     {
-        {5.0f, 95.0f},
-        {95.0f, 95.0f},
-        {95.0f, 5.0f},
-        {5.0f, 5.0f}
+        {20.0f, 80.0f},
+        {80.0f, 80.0f},
+        {80.0f, 20.0f},
+        {20.0f, 20.0f}
     };
-    FILE *f = fopen("/web/markers.json", "r");
-    if (f == NULL)
+    FILE *file = fopen("/web/markers.json", "r");
+    if (file == NULL)
     {
         ESP_LOGE("LED_CALCULATE", "Error while reading marker's position from file");
         return ESP_FAIL;
     }
-    int parsed = fscanf(f, "[[%f,%f],[%f,%f],[%f,%f],[%f,%f]]",
-                        &coordinates[0][0], &coordinates[0][1],
-                        &coordinates[1][0], &coordinates[1][1],
-                        &coordinates[2][0], &coordinates[2][1],
-                        &coordinates[3][0], &coordinates[3][1]);
-    fclose(f);
-    // LINEAR INTERPOLATION
+    int parsed = fscanf(file, "[[%f,%f],[%f,%f],[%f,%f],[%f,%f]]",
+                        &coordinates[0][0], //x0   left-down
+                        &coordinates[0][1], //y0   
+                        &coordinates[1][0], //x1   right-down
+                        &coordinates[1][1], //y1
+                        &coordinates[2][0], //x2   right-up
+                        &coordinates[2][1], //y2
+                        &coordinates[3][0], //x3   left-up
+                        &coordinates[3][1]);//y3
+    fclose(file);
 
     if (parsed != 8)
     {
@@ -42,287 +52,261 @@ esp_err_t calculate_led_points(led_struct *led_points)
         return ESP_FAIL;
     }
 
-    for (int i = 0; i < HORIZONTAL_DIODES; i++)
+    for (int i = 0; i < 4; i++)
     {
-        float coef = (float)(i)/(float)(HORIZONTAL_DIODES-1);
-
-        led_points->bottom[i][0] = floor((coordinates[0][0] + coef * (coordinates[1][0] - coordinates[0][0])) / 100 * (res_width - 1));
-        led_points->bottom[i][1] = floor((coordinates[0][1] + coef * (coordinates[1][1] - coordinates[0][1])) / 100 * (res_height - 1));
-
-        led_points->up[i][0] = floor((coordinates[2][0] + coef * (coordinates[3][0] - coordinates[2][0])) / 100 * (res_width - 1));
-        led_points->up[i][1] = floor((coordinates[2][1] + coef * (coordinates[3][1] - coordinates[2][1])) / 100 * (res_height - 1));
+        coordinates[i][0] = coordinates[i][0] * res_width / 100.0f;
+        coordinates[i][1] = coordinates[i][1] * res_height / 100.0f;
     }
 
-    for (int i = 0; i < VERTICAL_DIODES; i++)
+    float x0 = coordinates[0][0];
+    float y0 = coordinates[0][1];
+    float x1 = coordinates[1][0];
+    float y1 = coordinates[1][1];
+    float x2 = coordinates[2][0];
+    float y2 = coordinates[2][1];
+    float x3 = coordinates[3][0];
+    float y3 = coordinates[3][1];
+
+    float d_x1 = x1 - x2;
+    float d_x2 = x3 - x2;
+    float d_y1 = y1 - y2;
+    float d_y2 = y3 - y2;
+
+    float sigma_x = x0 - x1 + x2 - x3;
+    float sigma_y = y0 - y1 + y2 - y3;
+
+    float denominator = calculate_determinant(d_x1, d_x2, d_y1, d_y2);
+    if (fabsf(denominator) < 1e-6f)
     {
-        float coef = (float)(i)/(float)(VERTICAL_DIODES-1);
+        ESP_LOGE("LED_CALCULATE", "Degenerate quadrilateral (det == 0)");
+        return ESP_FAIL;
+    }
+    float g = calculate_determinant(sigma_x, d_x2, sigma_y,d_y2) / denominator;
+    float h = calculate_determinant(d_x1, sigma_x, d_y1,sigma_y) / denominator;
+    float a = x1 - x0 + g * x1;
+    float b = x3 - x0 + h * x3;
+    float c = x0;
+    float d = y1 - y0 + g * y1;
+    float e = y3 - y0 + h * y3;
+    float f = y0;
 
-        led_points->left[i][0] = floor((coordinates[3][0] + coef * (coordinates[0][0] - coordinates[3][0])) / 100 * (res_width - 1));
-        led_points->left[i][1] = floor((coordinates[3][1] + coef * (coordinates[0][1] - coordinates[3][1])) / 100 * (res_height - 1));
+    float t_horizontal[LED_POINTS_X];
+    float t_vertical[LED_POINTS_Y];
 
-        led_points->right[i][0] = floor((coordinates[1][0] + coef * (coordinates[2][0] - coordinates[1][0])) / 100 * (res_width - 1));
-        led_points->right[i][1] = floor((coordinates[1][1] + coef * (coordinates[2][1] - coordinates[1][1])) / 100 * (res_height - 1));
-    }  
-    //ESP_LOGI("LED_CALCULATE", "Calculated led points successfully!");
+    for (int i = 0; i < LED_POINTS_X; i++)
+    {
+        if (HORIZONTAL_DIODES > 1)
+        {
+            t_horizontal[i] = (float)i / (LED_POINTS_X - 1);
+        }
+        else
+        {
+            t_horizontal[i] = 0.0f;
+        }
+    }
+
+    for (int i = 0; i < LED_POINTS_Y; i++)
+    {
+        if (VERTICAL_DIODES > 1)
+        {
+            t_vertical[i] = (float)i / (LED_POINTS_Y- 1);
+        }
+        else
+        {
+            t_vertical[i] = 0.0f;
+        }
+    }
+
+    // bottom
+    for (int i = 0; i < LED_POINTS_X; i++)
+    {
+        for (int j = 0; j < SAMPLES_VERTICAL; j++)
+        {
+            float temp_denominator = g * t_horizontal[i] + h * t_vertical[j] + 1;
+            points_map->bottom[i][j][0] = (a * t_horizontal[i] + b * t_vertical[j] + c) / temp_denominator;
+            points_map->bottom[i][j][1] = (d * t_horizontal[i] + e * t_vertical[j] + f) / temp_denominator;
+        }
+    }
+
+    // right
+    for (int i = 0; i < LED_POINTS_Y; i++)
+    {
+        for (int j = 0; j < SAMPLES_HORIZONTAL; j++)
+        {
+            float temp_denominator = g * t_horizontal[LED_POINTS_X - 1 - j] + h * t_vertical[i] + 1;
+            points_map->right[i][j][0] = (a * t_horizontal[LED_POINTS_X - 1 - j] + b * t_vertical[i] + c) / temp_denominator;
+            points_map->right[i][j][1] = (d * t_horizontal[LED_POINTS_X - 1 - j] + e * t_vertical[i] + f) / temp_denominator;
+        }
+    }
+
+    // top
+    for (int i = 0; i < LED_POINTS_X; i++)
+    {
+        for (int j = 0; j < SAMPLES_VERTICAL; j++)
+        {
+            float temp_denominator = g * t_horizontal[LED_POINTS_X - 1 - i] + h * t_vertical[LED_POINTS_Y - 1 - j] + 1;
+            points_map->top[i][j][0] = (a * t_horizontal[LED_POINTS_X - 1 - i] + b * t_vertical[LED_POINTS_Y - 1 - j] + c) / temp_denominator;
+            points_map->top[i][j][1] = (d * t_horizontal[LED_POINTS_X - 1 - i] + e * t_vertical[LED_POINTS_Y - 1 - j] + f) / temp_denominator;
+        }
+    }
+
+
+    // left
+    for (int i = 0; i < LED_POINTS_Y; i++)
+    {
+        for (int j = 0; j < SAMPLES_HORIZONTAL; j++)
+        {
+            float temp_denominator = g * t_horizontal[j] + h * t_vertical[LED_POINTS_Y - 1 - i] + 1;
+            points_map->left[i][j][0] = (a * t_horizontal[j] + b * t_vertical[LED_POINTS_Y - 1 - i] + c) / temp_denominator;
+            points_map->left[i][j][1] = (d * t_horizontal[j] + e * t_vertical[LED_POINTS_Y - 1 - i] + f) / temp_denominator;
+        }
+    }
+
+    ESP_LOGI("MAP", "bottom[0]=(%d,%d) right[0]=(%d,%d) top[0]=(%d,%d) left[0]=(%d,%d)",
+    points_map->bottom[0][0][0], points_map->bottom[0][0][1],
+    points_map->right[0][0][0],  points_map->right[0][0][1],
+    points_map->top[0][0][0],    points_map->top[0][0][1],
+    points_map->left[0][0][0],   points_map->left[0][0][1]);
+
     return ESP_OK;
 }
 
-esp_err_t calculate_zones_LUT(led_struct *led_points, led_lut *out_lut)
+esp_err_t calculate_lut(zones_map *points_map, led_lut *out_lut)
 {
-    if (led_points == NULL || out_lut == NULL)
+    if (points_map == NULL || out_lut == NULL)
     {
-        ESP_LOGE("LUT","Błąd tablic algorytmu obliczania stref");
         return ESP_ERR_INVALID_ARG;
     }
 
-    size_t total_elements = ZONES_NUMBER * SAMPLES_PER_ZONE;
-    
-    uint16_t *x_coordinates = (uint16_t *)malloc(total_elements * sizeof(uint16_t));
-    uint16_t *y_coordinates = (uint16_t *)malloc(total_elements * sizeof(uint16_t));
+    uint32_t width  = resolution[framesize].width;
+    uint32_t height = resolution[framesize].height;
 
-    if(x_coordinates == NULL || y_coordinates == NULL)
+    int zone_idx = 0;
+
+    //======= bottom ========//
+    for (int d = 0; d < HORIZONTAL_DIODES; d++)
     {
-        ESP_LOGE("LUT", "Brak wolnego RAM-U na tablice tymczasowe");
-        if(x_coordinates) {free(x_coordinates);}
-        if(y_coordinates) {free(y_coordinates);}
-        return ESP_ERR_NO_MEM;
-    }
-    uint16_t index_x = 0;
-    uint16_t index_y = 0;
+        int sample_idx = 0;
 
-    uint16_t left_side_zone_width = 0;
-    uint16_t right_side_zone_width = 0;
-
-    // ================== X COORDINATES ==================//
-    // ========= BOTTOM ROW ========= //
-    for (int i = 0; i < HORIZONTAL_DIODES; i++)
-    {
-        uint16_t left_boundary;
-        uint16_t right_boundary;
-        uint16_t bottom_boundary = led_points->left[VERTICAL_DIODES-1][1];
-        uint16_t top_boundary = (led_points->left[VERTICAL_DIODES-1][1] + led_points->left[VERTICAL_DIODES-2][1]) / 2;
-
-        // Left boundary
-        if (i == 0)
+        //wzdłuż krawędzi
+        for (int j = 0; j < SAMPLES_HORIZONTAL; j++)
         {
-            left_boundary = led_points->bottom[0][0];   
-        }
-        else
-        {
-            left_boundary = (led_points->bottom[i-1][0] + led_points->bottom[i][0]) / 2;
-        }
-
-        // Right boundary
-        if (i == HORIZONTAL_DIODES - 1)
-        {
-            right_boundary = led_points->bottom[i][0];
-        }
-        else
-        {
-            right_boundary = (led_points->bottom[i][0] + led_points->bottom[i+1][0]) / 2;
-        }
-        uint16_t start_x = left_boundary + 2;
-        uint16_t end_x = right_boundary - 2;
-        uint16_t start_y = top_boundary + 2;
-        uint16_t end_y = bottom_boundary - 2;
-
-        uint16_t zone_width =(end_x > start_x) ? (end_x - start_x) : 0;
-        uint16_t zone_height =(end_y > start_y) ? (end_y - start_y) : 0;
-
-        //ESP_LOGW("LUT_BOTTOM", "R[%d]: y %d..%d, h=%d", i, start_y, end_y, zone_height);
-
-        if (i == 1) {left_side_zone_width = zone_width;}
-        if (i == HORIZONTAL_DIODES - 2) {right_side_zone_width = zone_width;}
-
-        float distance_to_point_x = (float)zone_width / (SAMPLES_HORIZONTAL - 1);
-        float distance_to_point_y = (float)zone_height  / (SAMPLES_VERTICAL - 1);
-
-        for (int j = 0; j < SAMPLES_VERTICAL; j++)
-        {    
-            uint16_t current_y = start_y + (int)(j * distance_to_point_y);
-            for (int k = 0; k < SAMPLES_HORIZONTAL; k++)
+            //wgłąb ekranu
+            for (int k = 0; k < SAMPLES_VERTICAL; k++)
             {
-                x_coordinates[index_x++] = start_x + (int)(k * distance_to_point_x);
-                y_coordinates[index_y++] = current_y;
-            }
-        }
-    }
+                int edge_idx = d * SAMPLES_HORIZONTAL + j;
+                uint32_t x = points_map->bottom[edge_idx][k][0];
+                uint32_t y = points_map->bottom[edge_idx][k][1];
 
-    // ======= Right column ======= //
-    for (int i = 0; i < VERTICAL_DIODES; i++)
-    {
-        int end_x = (int)led_points->right[i][0] - 2;
-        int start_x = end_x - right_side_zone_width;
-
-        uint16_t bottom_boundary;
-        uint16_t top_boundary;
-        if (i == 0)
-        {
-            bottom_boundary = led_points->right[0][1];
-        }
-        else
-        {
-            bottom_boundary = (led_points->right[i-1][1] + led_points->right[i][1]) / 2;
-        }
-        
-        if (i == VERTICAL_DIODES - 1)
-        {
-            top_boundary = led_points->right[i][1];
-        }
-        else 
-        {
-            top_boundary = (led_points->right[i][1] + led_points->right[i+1][1]) / 2;
-        }
-        uint16_t start_y = top_boundary + 2;
-        uint16_t end_y = bottom_boundary - 2;
-        
-        uint16_t zone_height = (end_y > start_y) ? (end_y - start_y) : 0;
-
-        //ESP_LOGW("LUT_RIGHT", "R[%d]: y %d..%d, h=%d", i, start_y, end_y, zone_height);
-
-        float distance_to_point_x = (float)right_side_zone_width / (SAMPLES_HORIZONTAL - 1);
-        float distance_to_point_y = (float)zone_height / (SAMPLES_VERTICAL - 1);   
-        for (int j = 0; j < SAMPLES_VERTICAL; j++)
-        {
-            uint16_t current_y = start_y + (int)(j * distance_to_point_y);
-            for (int k = 0; k < SAMPLES_HORIZONTAL; k++)
-            {
-                x_coordinates[index_x++] = start_x + (int)(k * distance_to_point_x);
-                y_coordinates[index_y++] = current_y;
-            }
-        }
-    }
-
-    // ========= UPPER ROW ========= //
-    for (int i = 0; i < HORIZONTAL_DIODES; i++)
-    {
-        uint16_t left_boundary;
-        uint16_t right_boundary;
-        uint16_t top_boundary = led_points->left[0][1];
-        uint16_t bottom_boundary = (led_points->left[0][1] + led_points->left[1][1]) / 2;
-
-        // Right boundary
-        if (i == 0)
-        {
-            right_boundary = led_points->up[0][0];
-        }
-        else
-        {
-            right_boundary = (led_points->up[i-1][0] + led_points->up[i][0]) / 2;
-        }
-
-        // left boundary
-        if (i == HORIZONTAL_DIODES - 1)
-        {
-            left_boundary = led_points->up[i][0];
-        }
-        else
-        {
-            left_boundary = (led_points->up[i][0] + led_points->up[i+1][0]) / 2;
-        }
-        uint16_t start_x = left_boundary + 2;
-        uint16_t end_x = right_boundary - 2;
-        uint16_t start_y = top_boundary + 2;
-        uint16_t end_y = bottom_boundary - 2;
-
-        uint16_t zone_width = (end_x > start_x) ? (end_x - start_x) : 0;
-        uint16_t zone_height = (end_y > start_y) ? (end_y - start_y) : 0;
-
-        float distance_to_point_x = (float)zone_width / (SAMPLES_HORIZONTAL - 1);
-        float distance_to_point_y = (float)zone_height / (SAMPLES_VERTICAL - 1);
-
-        //ESP_LOGW("LUT_UP", "R[%d]: y %d..%d, h=%d", i, start_y, end_y, zone_height);
-        for (int j = 0; j < SAMPLES_VERTICAL; j++)
-        {
-            uint16_t current_y = start_y + (int)(j * distance_to_point_y);
-            for (int k = 0; k < SAMPLES_HORIZONTAL; k++)
-            {
-                x_coordinates[index_x++] = start_x + (int)(k * distance_to_point_x);
-                y_coordinates[index_y++] = current_y;
-            }
-        }
-    }
-    // ======= Left column ======= //
-    for (int i = 0; i < VERTICAL_DIODES; i++)
-    {
-        uint16_t start_x = led_points->left[i][0] + 2;
-
-        uint16_t bottom_boundary = 0;
-        uint16_t top_boundary = 0;
-
-       if (i == 0)
-       {
-            top_boundary = led_points->left[i][1];
-       }
-       else
-       {
-            top_boundary = (led_points->left[i-1][1] + led_points->left[i][1]) / 2;
-       }
- 
-       if (i == VERTICAL_DIODES - 1)
-       {
-            bottom_boundary = led_points->left[i][1];
-       }
-       else
-       {
-            bottom_boundary = (led_points->left[i+1][1] + led_points->left[i][1]) / 2;
-       }
-
-        uint16_t start_y = top_boundary + 2;
-        uint16_t end_y = bottom_boundary - 2;
-        uint16_t zone_height = (end_y > start_y) ? (end_y - start_y) : 0;
-
-        //ESP_LOGW("LUT_LEFT", "R[%d]: y %d..%d, h=%d", i, start_y, end_y, zone_height);
-
-        float distance_to_point_x = (float)left_side_zone_width / (SAMPLES_HORIZONTAL - 1);
-        float distance_to_point_y = (float)zone_height / (SAMPLES_VERTICAL - 1);
-
-        for (int j = 0; j < SAMPLES_VERTICAL; j++)
-        {
-            uint16_t current_y = start_y + (int)(j * distance_to_point_y);
-            for (int k = 0; k < SAMPLES_HORIZONTAL; k++)
-            {
-                x_coordinates[index_x++] = start_x + (int)(k * distance_to_point_x);
-                y_coordinates[index_y++] = current_y;
-            }
-        }
-    }
-    int total_zones = ZONES_NUMBER;
-    int sample_counter = 0;
-    int clamped = 0;
-    // ======== OUT LUT ======== //
-    for (int i = 0; i < total_zones; i++)
-    {
-        for (int j = 0; j < SAMPLES_PER_ZONE; j++)
-        {
-            uint32_t x = x_coordinates[sample_counter];
-            uint32_t y = y_coordinates[sample_counter];
-            if (x >= resolution[framesize].width || y >= resolution[framesize].height) 
-            {
-                //ESP_LOGW("LUT", "Clamp: strefa %d, probka %d, x=%lu y=%lu", i, j, (unsigned long)x, (unsigned long)y);
-                clamped++;
-                if (x >= resolution[framesize].width)
+                if (x >= width)
                 {
-                    x = resolution[framesize].width - 1;
+                    x = width - 1;
                 }
-                if (y >= resolution[framesize].height)
+                if (y >= height)
                 {
-                    y = resolution[framesize].height - 1;
+                    y = height - 1;
                 }
-            }
-            out_lut->zones[i].offsets[j] = (uint32_t)(y * resolution[framesize].width + x);
-            sample_counter++;
-        }
-    }
-    //ESP_LOGI("LUT", "Przyciete probki: %d / %d", clamped, ZONES_NUMBER * SAMPLES_PER_ZONE);
 
-    free(x_coordinates);
-    free(y_coordinates);
+                out_lut->zones[zone_idx].offsets[sample_idx++] = (uint32_t)(y * resolution[framesize].width + x);
+            }
+        }
+        zone_idx++;
+    }
+
+    // ======== rigth ======== //
+    for (int d = 0; d < VERTICAL_DIODES; d++)
+    {
+        int sample_idx = 0;
+
+        //wzdłuż krawędzi
+        for (int j = 0; j < SAMPLES_VERTICAL; j++)
+        {
+            //wgłąb ekranu
+            for (int k = 0; k < SAMPLES_HORIZONTAL; k++)
+            {
+                int edge_idx = d * SAMPLES_VERTICAL + j;
+                uint32_t x = points_map->right[edge_idx][k][0];
+                uint32_t y = points_map->right[edge_idx][k][1];
+
+                if (x >= width)
+                {
+                    x = width - 1;
+                }
+                if (y >= height)
+                {
+                    y = height - 1;
+                }
+
+                out_lut->zones[zone_idx].offsets[sample_idx++] = (uint32_t)(y * resolution[framesize].width + x);
+            }
+        }
+        zone_idx++;
+    }
+
+    //======= top ========//
+    //wzdłuż krawędzi
+    for (int d = 0; d < HORIZONTAL_DIODES; d++)
+    {
+        int sample_idx = 0;
+
+        //wzdłuż krawędzi
+        for (int j = 0; j < SAMPLES_HORIZONTAL; j++)
+        {
+            //wgłąb ekranu
+            for (int k = 0; k < SAMPLES_VERTICAL; k++)
+            {
+                int edge_idx = d * SAMPLES_HORIZONTAL + j;
+                uint32_t x = points_map->top[edge_idx][k][0];
+                uint32_t y = points_map->top[edge_idx][k][1];
+
+                if (x >= width)
+                {
+                    x = width - 1;
+                }
+                if (y >= height)
+                {
+                    y = height - 1;
+                }
+
+                out_lut->zones[zone_idx].offsets[sample_idx++] = (uint32_t)(y * resolution[framesize].width + x);
+            }
+        }
+        zone_idx++;
+    }
+
+        // ======== left ======== //
+    for (int d = 0; d < VERTICAL_DIODES; d++)
+    {
+        int sample_idx = 0;
+
+        //wzdłuż krawędzi
+        for (int j = 0; j < SAMPLES_VERTICAL; j++)
+        {
+            //wgłąb ekranu
+            for (int k = 0; k < SAMPLES_HORIZONTAL; k++)
+            {
+                int edge_idx = d * SAMPLES_VERTICAL + j;
+                uint32_t x = points_map->left[edge_idx][k][0];
+                uint32_t y = points_map->left[edge_idx][k][1];
+
+                if (x >= width)
+                {
+                    x = width - 1;
+                }
+                if (y >= height)
+                {
+                    y = height - 1;
+                }
+
+                out_lut->zones[zone_idx].offsets[sample_idx++] = (uint32_t)(y * resolution[framesize].width + x);
+            }
+        }
+        zone_idx++;
+    }
     return ESP_OK;
 }
 
 static rgb_struct prev_results[ZONES_NUMBER] = {0};
-
 
 esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struct *results)
 {
