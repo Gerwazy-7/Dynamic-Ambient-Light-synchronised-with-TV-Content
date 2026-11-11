@@ -9,7 +9,7 @@
 #include <sys/types.h>
 
 #define EMA_coef 0.3
-#define R_GAIN 1.5f
+#define R_GAIN 1.8f
 #define ZONE_MARGIN 9
 
 float calculate_determinant(float a, float b, float c, float d)
@@ -29,6 +29,7 @@ esp_err_t calculate_map(zones_map *points_map)
         {80.0f, 20.0f},
         {20.0f, 20.0f}
     };
+
     FILE *file = fopen("/web/markers.json", "r");
     if (file == NULL)
     {
@@ -319,7 +320,6 @@ esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struc
         uint32_t r_weighted = 0;
         uint32_t g_weighted = 0;
         uint32_t b_weighted = 0;
-
         for (int j = 0; j < SAMPLES_PER_ZONE; j++)
         {
             // Dekodowanie RGB565 do RGB888
@@ -329,6 +329,7 @@ esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struc
             temp_rgb.g = ((cur_pixel >> 5)  & 0x3F) << 2;
             temp_rgb.b = ((cur_pixel)       & 0x1F) << 3;
 
+            
             uint8_t max_val = temp_rgb.r;
             if (temp_rgb.g > max_val)
             {
@@ -349,7 +350,7 @@ esp_err_t calculate_colours (led_lut *out_lut, camera_fb_t* fb, output_rgb_struc
                 min_val = temp_rgb.b;
             }
 
-            if (max_val < 40)
+            if (max_val < 50)
             {
                 continue;
             }

@@ -1,12 +1,12 @@
 #ifndef LITTLEFS_H
 #define LITTLEFS_H
 
-#include "esp_littlefs.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-
 /**
- * Function defining configuration and registering virtual file system LittleFS
+ * @brief Initialize NVS flash and mount the LittleFS virtual filesystem.
+ *
+ * Initializes non-volatile storage (required by Wi-Fi), configures the 
+ * VFS driver for the partition (named "storage"), and mounts it 
+ * in the directory path named "/web"
  */
 void init_littleFS(void);
 

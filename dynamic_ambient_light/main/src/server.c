@@ -101,9 +101,13 @@ static esp_err_t camera_settings_handler(httpd_req_t *req)
     fclose(f);
 
     int wb = 1, ae = 0, br = 0, co = 0, sa = 0;
-    sscanf(buf, " { \"whitebal\" : %d, \"ae_level\" : %d, \"brightness\" : %d, \"contrast\" : %d, \"saturation\" : %d} ", 
-        &wb, &ae, &br, &co, &sa);
-    
+    if (sscanf(buf, " { \"whitebal\" : %d, \"ae_level\" : %d, \"brightness\" : %d, \"contrast\" : %d, \"saturation\" : %d} ", 
+        &wb, &ae, &br, &co, &sa) != 5)
+    {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Zły format ustawień kamery");
+        return ESP_FAIL;
+    } 
+
     camera_apply_settings_live(wb, ae, br, co, sa);
     httpd_resp_sendstr(req, "OK");
     
@@ -358,6 +362,7 @@ esp_err_t stream_get_handler(httpd_req_t *req)
     if(res != ESP_OK)
     {
         ESP_LOGE("MJPEG", "Nie udało się ustawić informacji o MJPEG w nagłówku");
+        camera_release();
         return res;
     }
 

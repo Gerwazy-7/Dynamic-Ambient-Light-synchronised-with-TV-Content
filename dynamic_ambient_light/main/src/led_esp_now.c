@@ -1,14 +1,32 @@
 #include "led_esp_now.h"
-#include "led_logic.h"
-#include <string.h>
 
+#include <string.h>
+#include "esp_mac.h"
+#include "led_logic.h"
+
+/**
+ * @brief ESP-NOW receiver MAC
+ */
 static uint8_t recv_mac[ESP_NOW_ETH_ALEN] = {0x34, 0x98, 0x7a, 0xb7, 0xd5, 0xd8};
 
+/**
+ * @brief Callback function used after every EPS-NOW transmission attempt
+ * It logs every lost packet send via ESP-NOW
+ * @param tx_info Poiter to transmission metadata from WiFi driver. It contains receiver MAC address
+ * @param status Information about status of sent packet (ESP_NOW_SEND_SUCCESS or ESP_NOW_SEND_FAIL)
+ */
 static void on_data_sent(const wifi_tx_info_t *tx_info, esp_now_send_status_t status)
 {
     if (status != ESP_NOW_SEND_SUCCESS)
     {
-        ESP_LOGE("ESP-NOW TX", "Zgubiono pakiety!!!");
+        if(tx_info != NULL)
+        {
+            ESP_LOGE("ESP-NOW TX", "Packet lost! Receiver MAC: ", MACSTR, MAC2STR(tx_info->des_addr));
+        }
+        else
+        {
+            ESP_LOGE("ESP_NOW TX", "Transmission error");
+        }
     }
 }
 

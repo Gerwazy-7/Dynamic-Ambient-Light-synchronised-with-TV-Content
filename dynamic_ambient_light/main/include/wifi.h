@@ -1,16 +1,12 @@
 #ifndef WIFI_H
 #define WIFI_H
 
-#include "esp_log.h"
-#include "esp_err.h"
-#include "esp_wifi.h"
-#include "esp_event.h"
-#include "esp_wifi_default.h"
-#include "esp_wifi_types_generic.h"
-#include "esp_mac.h"
-
-void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data);
-
+/**
+ * @brief Initialize and start the Wi-Fi interface in SoftAP mode.
+ *
+ * Configures the TCP/IP stack, event loop, SoftAP network interface,
+ * Wi-Fi driver credentials, and starts the Access Point.
+ */
 void init_wifi_ap_mode(void);
 
 #endif //WIFI_H

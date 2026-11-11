@@ -32,7 +32,7 @@ bool camera_acquire(uint32_t timeout_ms)
     {
         return false;
     }
-    return xSemaphoreTake(s_camera_sem, timeout_ms) == pdTRUE;
+    return xSemaphoreTake(s_camera_sem, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
 }
 
 void camera_release(void)
@@ -49,7 +49,7 @@ void camera_release(void)
     {
         xSemaphoreGive(s_sensor_mtx);
     }
-    if (s_sensor_mtx)
+    if (s_camera_sem)
     {
         xSemaphoreGive(s_camera_sem);
     }

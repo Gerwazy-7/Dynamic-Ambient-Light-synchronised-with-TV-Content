@@ -28,10 +28,6 @@ void ambilight_task (void *pvParameters);
 
 esp_err_t file_server_get_handler(httpd_req_t *req);
 
-static esp_err_t save_markers_handler(httpd_req_t *req);
-
-static esp_err_t lights_handler(httpd_req_t *req);
-
 esp_err_t stream_get_handler(httpd_req_t *req);
 
 esp_err_t start_webserver(void);
